@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from .store import TaskStore
 from .ledger import BudgetLedger
+from .planner import build_dry_run_plan
 
 
 def main() -> int:
@@ -17,10 +18,15 @@ def main() -> int:
     listing.add_argument("--project", default=None)
     budget = sub.add_parser("budget", help="Show local budget ledger summary")
     budget.add_argument("--month", default=datetime.now(timezone.utc).strftime("%Y-%m"), help="UTC month in YYYY-MM format")
+    plan = sub.add_parser("plan", help="Build a read-only dry-run plan")
+    plan.add_argument("--project", default=None)
     args = parser.parse_args()
     store = TaskStore(Path(args.db))
     if args.command == "budget":
         print(json.dumps(BudgetLedger(Path(args.db)).summary(args.month), indent=2))
+        return 0
+    if args.command == "plan":
+        print(json.dumps(build_dry_run_plan(store, args.project), indent=2))
         return 0
     if args.command == "status":
         print(json.dumps({"service": "ai-company", "database_initialized": True, "model_calls_enabled": False, "autonomous_scheduler_enabled": False, "deployment_status": "not_deployed"}, indent=2))
