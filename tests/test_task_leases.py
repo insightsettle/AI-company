@@ -72,8 +72,8 @@ def test_scheduler_does_not_claim_task_with_incomplete_dependency(tmp_path):
     store.add_task(task("parent"))
     store.add_task(task("child", dependencies=("parent",)))
     make_ready(store, "parent")
-    make_ready(store, "child")
 
     claim = store.claim_ready_task("worker-a")
     assert claim and claim["task_id"] == "parent"
     assert store.claim_ready_task("worker-b") is None
+    assert store.get_task("child")["status"] == "backlog"
