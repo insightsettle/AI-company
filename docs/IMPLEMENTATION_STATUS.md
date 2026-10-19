@@ -9,6 +9,7 @@ Updated: 2026-10-19
 - Deterministic budget preflight checks.
 - SQLite task persistence and task-creation audit events.
 - Atomic SQLite budget reservations, settlement, release, monthly summaries, and reservation event records.
+- Daily model-spend target enforced atomically across reserved estimates and settled actual costs, with UTC date attribution and migration/backfill for existing ledger databases.
 - Validated task state transitions, dependency gating before a task becomes ready, and audit events for state changes.
 - Completion gate: a task can only move from `needs_qa` to `done` when QA evidence is supplied.
 - Unit tests for budget limits, task validation, persistence, ledger reservation/settlement/release/idempotency, safe CLI status, task transitions, dependencies, and QA evidence.
