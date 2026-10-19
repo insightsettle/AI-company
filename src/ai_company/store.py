@@ -1,6 +1,7 @@
 """SQLite-backed starter store for task persistence and an append-only audit log."""
 import json
 import sqlite3
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from .models import Task, VALID_STATUSES
 
@@ -19,6 +20,11 @@ CREATE TABLE IF NOT EXISTS audit_events (
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_project_status ON tasks(project_id, status);
 CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_events(entity_type, entity_id, id);
+CREATE TABLE IF NOT EXISTS task_leases (
+  task_id TEXT PRIMARY KEY, worker_id TEXT NOT NULL, lease_until TEXT NOT NULL,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_task_leases_expiry ON task_leases(lease_until);
 """
 
 ALLOWED_TRANSITIONS = {
@@ -115,6 +121,116 @@ class TaskStore:
                 event["qa_evidence"] = qa_evidence[:2000]
             conn.execute("INSERT INTO audit_events(entity_type,entity_id,event_type,detail_json) VALUES(?,?,?,?)",
                          ("task", task_id, "status_transition", json.dumps(event)))
+            conn.execute("COMMIT")
+        except Exception:
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
+            raise
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _utc_now() -> datetime:
+        return datetime.now(timezone.utc)
+
+    def claim_ready_task(self, worker_id: str, lease_seconds: int = 300,
+                         project_id: str | None = None) -> dict | None:
+        """Atomically claim one eligible ready task; no worker can claim it twice."""
+        if not worker_id.strip():
+            raise ValueError("worker_id is required")
+        if not 1 <= lease_seconds <= 3600:
+            raise ValueError("lease_seconds must be between 1 and 3600")
+        now = self._utc_now()
+        now_text = now.isoformat()
+        lease_until = (now + timedelta(seconds=lease_seconds)).isoformat()
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            expired = conn.execute("SELECT task_id, worker_id FROM task_leases WHERE lease_until <= ?", (now_text,)).fetchall()
+            for lease in expired:
+                task = conn.execute("SELECT status FROM tasks WHERE id=?", (lease["task_id"],)).fetchone()
+                if task and task["status"] == "reserved":
+                    conn.execute("UPDATE tasks SET status='ready', updated_at=? WHERE id=?", (now_text, lease["task_id"]))
+                    conn.execute("INSERT INTO audit_events(entity_type,entity_id,event_type,detail_json) VALUES(?,?,?,?)",
+                                 ("task", lease["task_id"], "lease_expired", json.dumps({"previous_worker": lease["worker_id"]})))
+                conn.execute("DELETE FROM task_leases WHERE task_id=?", (lease["task_id"],))
+            query = "SELECT id, dependencies_json FROM tasks WHERE status='ready'"
+            params: tuple = ()
+            if project_id:
+                query += " AND project_id=?"
+                params = (project_id,)
+            query += " ORDER BY updated_at, id"
+            candidates = conn.execute(query, params).fetchall()
+            chosen = None
+            for candidate in candidates:
+                eligible = True
+                for dependency_id in json.loads(candidate["dependencies_json"]):
+                    dep = conn.execute("SELECT status FROM tasks WHERE id=?", (dependency_id,)).fetchone()
+                    if dep is None or dep["status"] != "done":
+                        eligible = False
+                        break
+                if eligible:
+                    chosen = candidate
+                    break
+            if chosen is None:
+                conn.execute("COMMIT")
+                return None
+            task_id = chosen["id"]
+            conn.execute("UPDATE tasks SET status='reserved', updated_at=? WHERE id=? AND status='ready'", (now_text, task_id))
+            if conn.execute("SELECT changes()").fetchone()[0] != 1:
+                conn.execute("ROLLBACK")
+                return None
+            conn.execute("INSERT INTO task_leases(task_id,worker_id,lease_until,created_at,updated_at) VALUES(?,?,?,?,?)",
+                         (task_id, worker_id, lease_until, now_text, now_text))
+            conn.execute("INSERT INTO audit_events(entity_type,entity_id,event_type,detail_json) VALUES(?,?,?,?)",
+                         ("task", task_id, "task_claimed", json.dumps({"worker_id": worker_id, "lease_until": lease_until})))
+            conn.execute("COMMIT")
+            return {"task_id": task_id, "worker_id": worker_id, "lease_until": lease_until}
+        except Exception:
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
+            raise
+        finally:
+            conn.close()
+
+    def renew_task_lease(self, task_id: str, worker_id: str, lease_seconds: int = 300) -> str:
+        if not worker_id.strip():
+            raise ValueError("worker_id is required")
+        if not 1 <= lease_seconds <= 3600:
+            raise ValueError("lease_seconds must be between 1 and 3600")
+        now = self._utc_now()
+        until = (now + timedelta(seconds=lease_seconds)).isoformat()
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            lease = conn.execute("SELECT worker_id, lease_until FROM task_leases WHERE task_id=?", (task_id,)).fetchone()
+            task = conn.execute("SELECT status FROM tasks WHERE id=?", (task_id,)).fetchone()
+            if not lease or not task or lease["worker_id"] != worker_id or lease["lease_until"] <= now.isoformat() or task["status"] != "reserved":
+                raise ValueError("No active lease owned by this worker")
+            conn.execute("UPDATE task_leases SET lease_until=?, updated_at=? WHERE task_id=?", (until, now.isoformat(), task_id))
+            conn.execute("COMMIT")
+            return until
+        except Exception:
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
+            raise
+        finally:
+            conn.close()
+
+    def start_claimed_task(self, task_id: str, worker_id: str) -> None:
+        """Start only if the caller still owns a live lease."""
+        now = self._utc_now().isoformat()
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            lease = conn.execute("SELECT worker_id, lease_until FROM task_leases WHERE task_id=?", (task_id,)).fetchone()
+            task = conn.execute("SELECT status FROM tasks WHERE id=?", (task_id,)).fetchone()
+            if not lease or not task or lease["worker_id"] != worker_id or lease["lease_until"] <= now or task["status"] != "reserved":
+                raise ValueError("Cannot start task without a valid active lease")
+            conn.execute("UPDATE tasks SET status='running', updated_at=? WHERE id=?", (now, task_id))
+            conn.execute("DELETE FROM task_leases WHERE task_id=?", (task_id,))
+            conn.execute("INSERT INTO audit_events(entity_type,entity_id,event_type,detail_json) VALUES(?,?,?,?)",
+                         ("task", task_id, "task_started", json.dumps({"worker_id": worker_id})))
             conn.execute("COMMIT")
         except Exception:
             if conn.in_transaction:
