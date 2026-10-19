@@ -5,7 +5,7 @@ Updated: 2026-10-19
 ## Present in repository
 
 - Project, budget, architecture, operating, and security documentation.
-- Python package skeleton and CLI for local status/task listing.
+- Python package skeleton and CLI for local status, task listing, and monthly budget-ledger summary (`ai-company budget --month YYYY-MM`).
 - Deterministic budget preflight checks.
 - SQLite task persistence and task-creation audit events.
 - Atomic SQLite budget reservations, settlement, release, monthly summaries, and reservation event records.
