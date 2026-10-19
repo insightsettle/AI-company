@@ -40,6 +40,11 @@ class BudgetLedger:
               detail TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
             """)
+            # Migrate existing local ledgers and backfill their UTC creation date.
+            columns = {row["name"] for row in conn.execute("PRAGMA table_info(budget_reservations)")}
+            if "day_key" not in columns:
+                conn.execute("ALTER TABLE budget_reservations ADD COLUMN day_key TEXT NOT NULL DEFAULT ''")
+            conn.execute("UPDATE budget_reservations SET day_key=substr(created_at,1,10) WHERE day_key=''")
 
     def _connect(self):
         conn = sqlite3.connect(self.database_path, timeout=10, isolation_level=None)
