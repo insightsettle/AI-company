@@ -12,9 +12,10 @@ Updated: 2026-10-19
 - Daily model-spend target enforced atomically across reserved estimates and settled actual costs, with UTC date attribution and migration/backfill for existing ledger databases.
 - Validated task state transitions, dependency gating before a task becomes ready, and audit events for state changes.
 - Atomic ready-task claiming with worker-owned expiring leases, stale-reservation recovery, lease renewal, and lease-owner validation before starting work.
+- Bounded task retry tracking: each start increments an attempt counter; failed tasks can be requeued up to three attempts, after which retry is denied and audited.
 - Read-only dry-run planner and `ai-company plan` CLI command; it reports estimated cost and approval requirements without claiming tasks, reserving funds, calling providers, or executing external actions.
 - Completion gate: a task can only move from `needs_qa` to `done` when QA evidence is supplied.
-- Unit tests for budget limits, task validation, persistence, ledger reservation/settlement/release/idempotency, safe CLI status and planning, task transitions, lease ownership/expiry, dependencies, and QA evidence.
+- Unit tests for budget limits, task validation, persistence, ledger reservation/settlement/release/idempotency, safe CLI status and planning, task transitions, lease ownership/expiry, bounded retries, dependencies, and QA evidence.
 - GitHub Actions workflow for push, pull request, manual, and weekday scheduled test runs. It has read-only repository permissions and does not call AI providers.
 
 ## Not implemented yet
