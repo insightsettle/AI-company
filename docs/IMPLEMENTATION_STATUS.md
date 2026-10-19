@@ -17,7 +17,7 @@ Updated: 2026-10-19
 
 ## Not implemented yet
 
-- Daily model-spend enforcement and provider invoice reconciliation.
+- Provider invoice reconciliation and comparison of internal usage against actual provider invoices.
 - Safe task claiming/leases for multiple workers and full orchestration loop.
 - Provider adapters, model routing, credentials, rate limits, and model selection by current price/quality.
 - Cloud database, hosted orchestrator, durable queue, dashboard, and notifications.
