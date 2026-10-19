@@ -24,7 +24,7 @@ Initial proposed targets (to be validated during testing):
 - Internal daily model-spend target: USD 0.50.
 - Maximum automatic repair retries: 3.
 
-Before each model call, reserve estimated cost atomically. If the budget reservation fails, do not call the provider. Record estimates and actual usage separately, and reconcile provider invoices.
+Before each model call, reserve estimated cost atomically. The SQLite ledger enforces the configured daily model-spend target against both unsettled reservations and settled actual usage for that UTC date. A reservation must supply a matching `YYYY-MM` month and ISO `YYYY-MM-DD` day (the day defaults to the current UTC date). This is an internal guardrail, not a substitute for provider billing limits. If the budget reservation fails, do not call the provider. Record estimates and actual usage separately, and reconcile provider invoices.
 
 ## Permission tiers
 
