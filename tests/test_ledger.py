@@ -5,7 +5,7 @@ from ai_company.budget import BudgetPolicy
 
 
 def test_reservation_counts_against_remaining_budget(tmp_path):
-    ledger = BudgetLedger(tmp_path / "budget.sqlite3", BudgetPolicy(daily_model_target=Decimal("15.00")))
+    ledger = BudgetLedger(tmp_path / "budget.sqlite3", BudgetPolicy(daily_model_target=Decimal("15.00"), max_task_estimate=Decimal("15.00")))
     first = ledger.reserve("r1", "2026-10", "30.00", "10.00", day_key="2026-10-19")
     second = ledger.reserve("r2", "2026-10", "16.00", "1.00")
     assert first.allowed
