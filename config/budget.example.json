@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "currency": "USD",
+  "monthly_total_cap": 50.00,
+  "monthly_model_api_cap": 15.00,
+  "total_spend_review_at": 30.00,
+  "total_spend_stop_new_work_at": 45.00,
+  "model_review_at": 7.50,
+  "model_pause_low_priority_at": 10.50,
+  "model_stop_new_calls_at": 13.50,
+  "daily_model_target": 0.50,
+  "per_task_estimated_cost_caps": {
+    "simple": 0.02,
+    "standard": 0.10,
+    "complex": 0.50
+  },
+  "max_auto_retries": 3,
+  "auto_top_up": false,
+  "reserve_cost_before_call": true,
+  "fail_closed_if_cost_accounting_unavailable": true,
+  "note": "Internal policy configuration only; enforcement code, provider billing controls, and reconciliation are not implemented yet."
+}
