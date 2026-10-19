@@ -48,6 +48,9 @@ class TaskStore:
             Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             conn.executescript(SCHEMA)
+            columns = {row["name"] for row in conn.execute("PRAGMA table_info(tasks)")}
+            if "attempt_count" not in columns:
+                conn.execute("ALTER TABLE tasks ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0")
 
     def _connect(self):
         conn = sqlite3.connect(self.database_path, timeout=10, isolation_level=None)
@@ -115,7 +118,10 @@ class TaskStore:
             if new_status == "done" and (old_status != "needs_qa" or not qa_evidence or not qa_evidence.strip()):
                 raise ValueError("A task can be marked done only from needs_qa with linked QA evidence")
             now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
-            conn.execute("UPDATE tasks SET status=?, updated_at=? WHERE id=?", (new_status, now, task_id))
+            if new_status == "running":
+                conn.execute("UPDATE tasks SET status=?, updated_at=?, attempt_count=attempt_count+1 WHERE id=?", (new_status, now, task_id))
+            else:
+                conn.execute("UPDATE tasks SET status=?, updated_at=? WHERE id=?", (new_status, now, task_id))
             event = {"from": old_status, "to": new_status, "detail": detail[:1000]}
             if qa_evidence:
                 event["qa_evidence"] = qa_evidence[:2000]
@@ -227,11 +233,47 @@ class TaskStore:
             task = conn.execute("SELECT status FROM tasks WHERE id=?", (task_id,)).fetchone()
             if not lease or not task or lease["worker_id"] != worker_id or lease["lease_until"] <= now or task["status"] != "reserved":
                 raise ValueError("Cannot start task without a valid active lease")
-            conn.execute("UPDATE tasks SET status='running', updated_at=? WHERE id=?", (now, task_id))
+            conn.execute("UPDATE tasks SET status='running', updated_at=?, attempt_count=attempt_count+1 WHERE id=?", (now, task_id))
             conn.execute("DELETE FROM task_leases WHERE task_id=?", (task_id,))
             conn.execute("INSERT INTO audit_events(entity_type,entity_id,event_type,detail_json) VALUES(?,?,?,?)",
                          ("task", task_id, "task_started", json.dumps({"worker_id": worker_id})))
             conn.execute("COMMIT")
+        except Exception:
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
+            raise
+        finally:
+            conn.close()
+
+    def retry_failed_task(self, task_id: str, detail: str, max_attempts: int = 3) -> bool:
+        """Requeue a failed task only within a bounded retry budget and with dependencies met."""
+        if not detail.strip():
+            raise ValueError("Retry detail is required for the audit trail")
+        if not 1 <= max_attempts <= 3:
+            raise ValueError("max_attempts must be between 1 and 3")
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT status, attempt_count, dependencies_json FROM tasks WHERE id=?", (task_id,)).fetchone()
+            if row is None:
+                raise KeyError(f"Unknown task: {task_id}")
+            if row["status"] != "failed":
+                raise ValueError("Only failed tasks can be retried")
+            if row["attempt_count"] >= max_attempts:
+                conn.execute("INSERT INTO audit_events(entity_type,entity_id,event_type,detail_json) VALUES(?,?,?,?)",
+                             ("task", task_id, "retry_exhausted", json.dumps({"attempt_count": row["attempt_count"], "max_attempts": max_attempts})))
+                conn.execute("COMMIT")
+                return False
+            for dependency_id in json.loads(row["dependencies_json"]):
+                dep = conn.execute("SELECT status FROM tasks WHERE id=?", (dependency_id,)).fetchone()
+                if dep is None or dep["status"] != "done":
+                    raise ValueError(f"Dependency is not complete: {dependency_id}")
+            now = self._utc_now().isoformat()
+            conn.execute("UPDATE tasks SET status='ready', updated_at=? WHERE id=? AND status='failed'", (now, task_id))
+            conn.execute("INSERT INTO audit_events(entity_type,entity_id,event_type,detail_json) VALUES(?,?,?,?)",
+                         ("task", task_id, "task_retry_scheduled", json.dumps({"attempt_count": row["attempt_count"], "max_attempts": max_attempts, "detail": detail[:1000]})))
+            conn.execute("COMMIT")
+            return True
         except Exception:
             if conn.in_transaction:
                 conn.execute("ROLLBACK")
