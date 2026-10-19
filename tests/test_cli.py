@@ -18,3 +18,13 @@ def test_budget_command_shows_monthly_summary(monkeypatch, capsys, tmp_path):
     assert payload["month_key"] == "2026-10"
     assert payload["actual_model"] == "0.00"
     assert payload["reserved_model"] == "0.00"
+
+ 
+def test_plan_command_is_explicitly_dry_run(monkeypatch, capsys, tmp_path):
+    db = str(tmp_path / "state.db")
+    monkeypatch.setattr("sys.argv", ["ai-company", "--db", db, "plan"])
+    assert main() == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["mode"] == "dry_run"
+    assert payload["read_only"] is True
+    assert payload["provider_calls_enabled"] is False
