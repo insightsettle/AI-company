@@ -31,7 +31,7 @@ Files have been committed to GitHub. The CI workflow has been authored, but its 
 ## Next engineering milestones
 
 1. Observe the first CI run and fix any failing tests.
-2. Add daily spend controls and provider-cost reconciliation.
+2. Add provider-cost reconciliation and tests against real provider invoice exports.
 3. Implement safe task claiming, retries, and a dry-run planner without model providers.
 4. Select hosting and database after verifying current free-tier limits and budget.
 5. Add a provider adapter only after budget reservation, secret handling, and logging are tested.
