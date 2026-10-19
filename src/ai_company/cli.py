@@ -2,8 +2,10 @@
 import argparse
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from .store import TaskStore
+from .ledger import BudgetLedger
 
 
 def main() -> int:
@@ -13,8 +15,13 @@ def main() -> int:
     sub.add_parser("status", help="Show local store status")
     listing = sub.add_parser("tasks", help="List tasks")
     listing.add_argument("--project", default=None)
+    budget = sub.add_parser("budget", help="Show local budget ledger summary")
+    budget.add_argument("--month", default=datetime.now(timezone.utc).strftime("%Y-%m"), help="UTC month in YYYY-MM format")
     args = parser.parse_args()
     store = TaskStore(Path(args.db))
+    if args.command == "budget":
+        print(json.dumps(BudgetLedger(Path(args.db)).summary(args.month), indent=2))
+        return 0
     if args.command == "status":
         print(json.dumps({"service": "ai-company", "database_initialized": True, "model_calls_enabled": False, "autonomous_scheduler_enabled": False, "deployment_status": "not_deployed"}, indent=2))
         return 0
