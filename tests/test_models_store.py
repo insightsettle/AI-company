@@ -23,14 +23,13 @@ def test_store_persists_task_and_audit_event(tmp_path):
     db = tmp_path / "state.sqlite3"
     store = TaskStore(db)
     store.add_task(sample_task())
-    # A new store instance must read the same task after process-like restart.
     restarted = TaskStore(db)
     assert restarted.get_task("t-001")["project_id"] == "insight"
     assert restarted.audit_events("t-001")[0]["event_type"] == "task_created"
 
 
-def test_duplicate_task_id_is_rejected():
-    store = TaskStore(":memory:")
+def test_duplicate_task_id_is_rejected(tmp_path):
+    store = TaskStore(tmp_path / "state.sqlite3")
     store.add_task(sample_task())
     with pytest.raises(Exception):
         store.add_task(sample_task())
