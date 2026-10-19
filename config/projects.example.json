@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "projects": [
+    {
+      "id": "insight",
+      "name": "Insight",
+      "status": "needs_source_audit",
+      "goal": "Escrow / trusted-intermediary fintech concept",
+      "requirement_groups": ["C01", "C02", "C03", "C04", "C05", "C06", "C07", "C08", "C09", "C10", "C11"],
+      "source_locations": [],
+      "completion_policy": "Require artifact and independent QA evidence for every requirement"
+    },
+    {
+      "id": "qarar",
+      "name": "Qarar",
+      "status": "needs_source_audit",
+      "goal": "Digital financial products store; product quality, SEO, and organic growth",
+      "source_locations": [],
+      "paid_marketing_allowed": false
+    },
+    {
+      "id": "trading-research",
+      "name": "Trading Research",
+      "status": "research_only",
+      "goal": "Strategy research, backtesting, paper trading, and reporting",
+      "source_locations": [],
+      "live_trading_allowed": false
+    }
+  ],
+  "note": "This is an example registry. Populate source_locations only after verifying authorized source access. The retired Value project is intentionally excluded."
+}
